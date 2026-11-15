@@ -1,14 +1,16 @@
 """报告装配：把一次运行整理成报告页需要的结论、横条、柱图与对账行。
 
 报告页只放结论与数字，规则说明在 docs/DATA-DICTIONARY.md；这里不生成
-解释性长句，所有文案都由数据决定。
+解释性长句，所有文案都由数据决定。样本范围（截止基线 / 补发增量）来自
+同一份运行快照，与缺失明细、导出来自同一个 run_id。
 """
 from __future__ import annotations
 
 from decimal import Decimal
 
 
-def build(result: dict) -> dict:
+def build(result: dict, *, release: dict | None = None,
+          impact: dict | None = None) -> dict:
     score = result["score"]
     dims = []
     bars = []
@@ -29,6 +31,7 @@ def build(result: dict) -> dict:
                                             -Decimal(item["format_rate"]),
                                             item["name"]))
     counters = result["manifest"]["counters"]
+    scope = (release or {}).get("scope") or result["manifest"].get("scope") or {}
     return {
         "run": result["run"],
         "dataset": result["dataset"],
@@ -50,5 +53,8 @@ def build(result: dict) -> dict:
         "stages": result["manifest"]["stages"],
         "thresholds": result["manifest"]["thresholds"],
         "manifest": result["manifest"],
+        "scope": scope,
+        "release": release,
+        "impact": impact,
     }
 

@@ -35,13 +35,22 @@ class Ctx:
     def current_run(self, run_id: str | None = None) -> dict | None:
         if run_id:
             return self.store.get_run(run_id)
-        return self.store.latest_run()
+        return self.store.active_run() or self.store.latest_run()
 
     def current_result(self, run_id: str | None = None) -> tuple[dict | None, dict | None]:
         run = self.current_run(run_id)
         if run is None:
             return None, None
         return run, self.store.load_result(run["run_id"])
+
+    def current_release(self, run_id: str | None = None) -> dict | None:
+        if run_id:
+            return self.store.release_for_run(run_id)
+        active = self.store.active_release()
+        if active is not None:
+            return active
+        run = self.store.latest_run()
+        return self.store.release_for_run(run["run_id"]) if run else None
 
 
 def get_ctx(request: Request) -> Ctx:

@@ -38,6 +38,12 @@ REASONS: dict[str, dict[str, str]] = {
     "K_KEY_CONFLICT": {"label": "同键取值冲突", "level": "warn"},
     "K_CAPPED": {"label": "该维扣分已封顶", "level": "info"},
     "K_REPLAY": {"label": "同输入重跑复用", "level": "info"},
+    "K_SUPPLEMENT_LATE": {"label": "补发∈迟到记录", "level": "info"},
+    "K_SUPPLEMENT_WITHDRAW": {"label": "补发∈撤回工单", "level": "warn"},
+    "K_SUPPLEMENT_CORRECT": {"label": "补发∈字段更正", "level": "info"},
+    "K_SUPERSEDED_RUN": {"label": "已被补发版本取代", "level": "info"},
+    "K_RELEASE_RESTORED": {"label": "已恢复完整旧版", "level": "warn"},
+    "K_SUPPLEMENT_APPLIED": {"label": "已应用补发", "level": "info"},
 }
 
 

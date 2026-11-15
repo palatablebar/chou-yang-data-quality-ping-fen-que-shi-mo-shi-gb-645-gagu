@@ -12,7 +12,7 @@ def signature(profile: dict, row: dict) -> tuple[str, ...]:
                  if is_missing(row["cells"][column["name"]]))
 
 
-def pattern_table(profile: dict, limit: int = 12) -> list[dict]:
+def pattern_table(profile: dict, limit: int | None = 12) -> list[dict]:
     labels = {column["name"]: column["label"] for column in profile["columns"]}
     buckets: dict[tuple[str, ...], dict] = {}
     for row in profile["rows"]:
@@ -31,10 +31,10 @@ def pattern_table(profile: dict, limit: int = 12) -> list[dict]:
     ordered = sorted(buckets.values(),
                      key=lambda item: (-item["count"], -len(item["columns"]),
                                        item["columns"]))
-    return ordered[:limit]
+    return ordered if limit is None else ordered[:limit]
 
 
-def co_missing(profile: dict, limit: int = 10) -> list[dict]:
+def co_missing(profile: dict, limit: int | None = 10) -> list[dict]:
     columns = [column["name"] for column in profile["columns"]]
     labels = {column["name"]: column["label"] for column in profile["columns"]}
     counts: dict[tuple[str, str], int] = {}
@@ -49,7 +49,7 @@ def co_missing(profile: dict, limit: int = 10) -> list[dict]:
               "count": count}
              for pair, count in counts.items() if count >= 2]
     items.sort(key=lambda item: (-item["count"], item["left"], item["right"]))
-    return items[:limit]
+    return items if limit is None else items[:limit]
 
 
 def rows_with_missing(profile: dict, column: str, limit: int = 10) -> list[int]:

@@ -5,8 +5,6 @@
 """
 from __future__ import annotations
 
-from decimal import Decimal
-
 import datetime as dt
 
 from ... import config
@@ -24,17 +22,18 @@ def stale_check(store, name: str, expected_version: int | None) -> int:
     return latest
 
 
-def replay(store, existing: dict) -> dict:
+def replay(store, existing: dict, *, publication: dict | None = None) -> dict:
     store.touch_run(existing["run_id"], _now())
     payload = store.load_result(existing["run_id"])
     payload["replay"] = True
     payload["run"] = _run_row(existing)
+    payload["publication"] = publication or store.release_for_run(existing["run_id"])
     return payload
 
 
 def require_run(store, run_id: str | None) -> dict:
     if not run_id:
-        latest = store.latest_run()
+        latest = store.active_run() or store.latest_run()
         if latest is None:
             raise NotFound("还没有运行记录", code="E_RUN_NOT_FOUND")
         return latest
@@ -57,21 +56,6 @@ def _run_row(run: dict) -> dict:
         "cells_missing": int(run["cells_missing"]),
         "created_at": run["created_at"], "finished_at": run["finished_at"],
     }
-
-
-def persist(store, result: dict) -> dict:
-    run = result["run"]
-    store.save_run({
-        "run_id": run["run_id"], "name": run["name"], "digest": run["digest"],
-        "rules_version": run["rules_version"], "version": run["version"],
-        "score": Decimal(run["score"]), "grade": run["grade"],
-        "rows_in": run["rows_in"], "rows_accepted": run["rows_accepted"],
-        "rows_unique": run["rows_unique"], "rows_dup": run["rows_dup"],
-        "rows_quarantine": run["rows_quarantine"], "rows_blank": run["rows_blank"],
-        "cells_total": run["cells_total"], "cells_missing": run["cells_missing"],
-        "created_at": run["created_at"], "finished_at": run["finished_at"],
-    }, result)
-    return result
 
 
 def summary(run: dict) -> dict:

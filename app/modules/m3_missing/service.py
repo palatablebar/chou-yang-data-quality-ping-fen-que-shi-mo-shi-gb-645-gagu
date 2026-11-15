@@ -12,8 +12,9 @@ def build(profile: dict) -> dict:
         "runs": found,
         "run_summary": runs.summary(found),
         "longest_run": runs.longest(found),
-        "patterns": matrix.pattern_table(profile),
-        "co_missing": matrix.co_missing(profile),
+        # 快照里保留完整模式表：补发影响对比要看全量差异，页面摘要再截断。
+        "patterns": matrix.pattern_table(profile, limit=None),
+        "co_missing": matrix.co_missing(profile, limit=None),
     }
 
 

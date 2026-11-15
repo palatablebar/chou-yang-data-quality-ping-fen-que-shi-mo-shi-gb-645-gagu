@@ -19,6 +19,7 @@
 | 稳健离群 | 中位数 + MAD 稳健 z，MAD=0 回退 IQR/1.349，离散度低于刻度下限判退化 |
 | 评分 | 100 − 缺失 30 − 重复 25 − 离群 20 − 格式 25，每维按容忍度封顶，Decimal 计分 |
 | 批次与导出 | run_id、输入 sha256、版本自增、同输入幂等复用、陈旧提交 409、六种 CSV + 清单 JSON |
+| 截止与补发 | 截止基线冻结、迟到 / 撤回 / 更正按批补发、累计重放、补发影响对比、完整旧版恢复 |
 
 ## 功能模块
 
@@ -30,6 +31,7 @@
 | M4 重复判定 | `GET /api/duplicates`、页面 `/duplicates` | `app/modules/m4_duplicates/hashdup.py`、`keydup.py`、`groups.py` | `tests/test_m4_duplicates.py` |
 | M5 稳健离群 | `GET /api/outliers`、页面 `/outliers` | `app/modules/m5_outliers/robust.py`、`zscore.py`、`flags.py` | `tests/test_m5_outliers.py` |
 | M6 评分与批次 | `POST /api/score`、`GET /api/batches`、`GET /api/reconcile`、页面 `/batches` | `app/modules/m6_score/score.py`、`grade.py`、`runstore.py`、`service.py` | `tests/test_m6_score.py` |
+| M6 发布与补发 | `POST /api/supplements`、`POST /api/supplements/preview`、`GET /api/releases`、`GET /api/impact` | `app/modules/m6_score/publication.py`、`revision.py`、`supplement.py`、`impact.py` | `tests/test_m8_release.py`、`tests/test_m9_release_e2e.py` |
 | M7 报告导出 | `GET /`、`GET /api/export/*` | `app/modules/m7_export/report.py`、`csv_out.py`、`manifest_out.py` | `tests/test_m7_export.py` |
 
 ## 核心规则
@@ -45,6 +47,26 @@
    总分 = 100 − 扣分之和，恒在 [0, 100]，`总分 + 扣分之和 = 100` 逐位成立。
 5. **幂等与版本**：同名数据集按内容 sha256 + 规则版本 + 阈值摘要识别，
    同输入重跑返回同一运行记录；客户端版本落后于库里版本时返回 409。
+6. **截止口径与补发**：`baseline` 冻结截止样本；迟到 / 撤回 / 更正按
+   `supplement_id` 成批补发，同一批重试不新增版本、不重复计数；每批补发都从
+   基线原文按登记顺序累计重放，后到的更正不覆盖先到的，也不叠加两次。
+7. **单一版本发布**：报告页、缺失明细与全部导出读同一个 `run_id` 快照；
+   一次发布在单个事务里完成，中断即整笔回滚；`/batches` 可把生效指针切回任一
+   完整旧版，不删除新数据。
+
+## 截止与补发
+
+月底例会前分析师需要「既能发布、又能看到补发影响」：
+
+- 先登记**截止基线**（`release=baseline` + `cutoff_at`），报告页「样本范围」
+  写明截止时间与补发批次 0。
+- 截止后客服系统补发迟到记录 / 撤回工单 / 字段更正时，按批调用
+  `POST /api/supplements`，每次推进一版；报告页「补发影响」给出相对截止基线的
+  总分与缺失模式前后对比，`impact.csv` 是同一份数据的导出。
+- 基线冻结后不允许再上传新内容覆盖分母（409 `E_BASELINE_FROZEN`），
+  补发是唯一推进路径，可解释、可追溯。
+
+详见 `docs/DATA-DICTIONARY.md` 第 8 节与 `docs/RUNBOOK.md` 第 3.1 节。
 
 ## 启动
 
@@ -79,10 +101,18 @@ open http://127.0.0.1:18204/
 | GET | `/api/missing` | 缺失账、连续段、共缺对 |
 | GET | `/api/duplicates` | 两套重复账与冲突 |
 | GET | `/api/outliers` | 逐列稳健统计与离群格 |
-| POST | `/api/score` | 跑一次评分（可带 `expected_version`） |
+| POST | `/api/score` | 跑一次评分（可带 `expected_version`、`release`、`cutoff_at`） |
+| POST | `/api/score/upload` | 上传并评分（multipart，含 `release` / `cutoff_at`） |
+| POST | `/api/supplements` | 应用补发批次（`supplement_id` + `ops`） |
+| POST | `/api/supplements/preview` | 试算补发影响，不写库 |
+| GET | `/api/supplements` | 补发批次账 |
+| GET | `/api/releases` | 发布版本与当前生效版 |
+| POST | `/api/releases/{id}/activate` | 恢复完整旧版（带完整性自检） |
+| GET | `/api/releases/{id}/verify` | 发布完整性自检 |
+| GET | `/api/impact` | 两次运行之间的补发影响对比 |
 | GET | `/api/batches` | 运行历史 |
 | GET | `/api/reconcile` | 五项对账 |
-| GET | `/api/export/report.csv` 等 | 六种 CSV + `manifest.json` |
+| GET | `/api/export/report.csv` 等 | 六种 CSV + `impact.csv` + `manifest.json` |
 | GET | `/`、`/profile`、`/missing`、`/duplicates`、`/outliers`、`/batches` | 六个页面 |
 
 ## 目录
@@ -95,7 +125,7 @@ app/
   static/     theme.css layout.css components.css app.js table.js charts.js
 docs/         DEPTH.md DATA-DICTIONARY.md RUNBOOK.md
 sample_data/  9 个 CSV（脏、干净、GB18030、BOM、截断、常量列、仅表头、空行、空文件）
-tests/        conftest.py + 7 个模块测试 + e2e + invariants + fixtures
+tests/        conftest.py + 7 个模块测试 + 发布补发测试 + e2e + invariants + fixtures
 ```
 
 ## 定义与已覆盖

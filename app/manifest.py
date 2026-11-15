@@ -49,7 +49,7 @@ def build(*, run_id: str, version: int, name: str, digest: str, settings,
           encoding: str, declared_encoding: str | None, params: dict,
           started_at: str, finished_at: str, elapsed_ms: int,
           stages: list[dict], counters: dict, reconcile: dict,
-          thresholds: dict) -> dict:
+          thresholds: dict, scope: dict | None = None) -> dict:
     return {
         "run_id": run_id,
         "version": version,
@@ -67,6 +67,12 @@ def build(*, run_id: str, version: int, name: str, digest: str, settings,
         "decimals": {"score": "0.01", "rate": "0.0001", "minutes": "0.1",
                      "hours": "0.01"},
         "timezone": "入库 UTC，展示 Asia/Shanghai(+08:00)",
+        "scope": scope or {"kind": "run", "label": "即时运行",
+                           "cutoff_at": None, "supplement_ids": [],
+                           "supplement_total": 0,
+                           "operations": {"late": 0, "withdraw": 0, "correct": 0},
+                           "operations_total": 0,
+                           "baseline_run_id": None, "parent_run_id": None},
         "stages": stages,
         "counters": counters,
         "accounts": [

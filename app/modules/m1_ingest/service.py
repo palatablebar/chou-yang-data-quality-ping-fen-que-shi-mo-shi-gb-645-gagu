@@ -97,6 +97,25 @@ def ingest(settings: config.Settings, *, name: str | None = None,
     }
 
 
+def decode_blob(blob: dict) -> dict:
+    """按库里的不可变原文解码：补发重算永远用链条根当时的字节。"""
+    data = bytes(blob["content"])
+    decoded = decode.decode_bytes(data, blob.get("declared_encoding"))
+    return {"text": decoded.text, "encoding": decoded.encoding,
+            "declared_encoding": blob.get("declared_encoding"),
+            "delimiter": reader.pick_delimiter(decoded.text)}
+
+
+def encode_like(text: str, blob: dict, decoded: dict) -> bytes:
+    """回写时保持原文件的 BOM 形态：`utf-8-sig` 解码不带 BOM 的文件若按
+    `utf-8-sig` 回写会凭空多出 BOM，摘要随之变化，同内容就无法复用。"""
+    had_bom = bytes(blob["content"]).startswith(decode.BOM_BYTES)
+    encoding = decoded.get("encoding") or "utf-8"
+    if encoding == "utf-8-sig" and not had_bom:
+        encoding = "utf-8"
+    return text.encode(encoding)
+
+
 def quarantine_summary(quarantine: list[dict]) -> list[dict]:
     buckets: dict[str, dict] = {}
     for item in quarantine:

@@ -2,6 +2,51 @@
 {% block body %}
 <h1 class="title">评分批次</h1>
 
+{% if release %}
+<section class="block">
+  <h2 class="block__title">当前发布<span class="block__hint">{{ release.scope.label or release.kind }}</span></h2>
+  <ul class="pairs pairs--two">
+    <li class="pair"><span class="pair__key">发布号</span><span class="pair__value mono">{{ release.release_id }}</span></li>
+    <li class="pair"><span class="pair__key">运行</span><span class="pair__value mono">{{ release.run_id }}</span></li>
+    <li class="pair"><span class="pair__key">版本</span><span class="pair__value num">v{{ release.version }}</span></li>
+    <li class="pair"><span class="pair__key">截止时间</span><span class="pair__value num">{{ release.scope.cutoff_at|localdt if release.scope.cutoff_at else "未设截止" }}</span></li>
+    <li class="pair"><span class="pair__key">补发批次</span><span class="pair__value num">{{ release.scope.supplement_total or 0 }}</span></li>
+    <li class="pair"><span class="pair__key">基线运行</span><span class="pair__value mono">{{ release.scope.baseline_run_id or release.run_id }}</span></li>
+  </ul>
+</section>
+{% endif %}
+
+<section class="block">
+  <h2 class="block__title">发布历史<span class="block__hint">切回旧版不删任何数据</span></h2>
+  {% if releases %}
+  <table class="ledger ledger--wide" data-sortable>
+    <thead>
+      <tr><th>发布号</th><th>口径</th><th class="num">版本</th><th>运行</th>
+          <th class="num">补发</th><th>时间</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for item in releases %}
+      <tr{% if active and item.release_id == active.release_id %} class="is-active"{% endif %}>
+        <td class="mono">{{ item.release_id }}</td>
+        <td>{{ item.scope.label or item.kind }}{% if item.scope.cutoff_at %}<span class="sub">截止 {{ item.scope.cutoff_at|localdt }}</span>{% endif %}</td>
+        <td class="num">v{{ item.version }}</td>
+        <td class="mono"><a class="link" href="/batches?run_id={{ item.run_id }}">{{ item.run_id }}</a></td>
+        <td class="num">{{ item.scope.supplement_total or 0 }}</td>
+        <td class="mono">{{ item.published_at|localdt }}</td>
+        <td>
+          {% if active and item.release_id == active.release_id %}<span class="tag">生效中</span>
+          {% else %}<button class="btn btn--restore" type="button" data-release="{{ item.release_id }}">恢复此版</button>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="status" id="restore-status" role="status" aria-live="polite"></p>
+  {% else %}
+  <p class="empty">还没有发布记录。</p>
+  {% endif %}
+</section>
+
 <section class="block">
   <h2 class="block__title">运行</h2>
   {% if runs %}
@@ -67,12 +112,12 @@
 <section class="block">
   <h2 class="block__title">导出</h2>
   <p class="links">
-    <a class="link" href="/api/export/report.csv">导出报告</a>
-    <a class="link" href="/api/export/missing.csv">导出缺失</a>
-    <a class="link" href="/api/export/duplicates.csv">导出重复</a>
-    <a class="link" href="/api/export/outliers.csv">导出离群</a>
-    <a class="link" href="/api/export/quarantine.csv">隔离区 CSV</a>
-    <a class="link" href="/api/export/manifest.json">运行清单 JSON</a>
+    <a class="link" href="/api/export/report.csv?run_id={{ run.run_id if run else '' }}">导出报告</a>
+    <a class="link" href="/api/export/missing.csv?run_id={{ run.run_id if run else '' }}">导出缺失</a>
+    <a class="link" href="/api/export/duplicates.csv?run_id={{ run.run_id if run else '' }}">导出重复</a>
+    <a class="link" href="/api/export/outliers.csv?run_id={{ run.run_id if run else '' }}">导出离群</a>
+    <a class="link" href="/api/export/quarantine.csv?run_id={{ run.run_id if run else '' }}">隔离区 CSV</a>
+    <a class="link" href="/api/export/manifest.json?run_id={{ run.run_id if run else '' }}">运行清单 JSON</a>
   </p>
 </section>
 {% endblock %}

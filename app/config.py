@@ -165,6 +165,22 @@ STAGE_LABELS = {
 }
 STAGE_FLOW = "采信 → 画像 → 缺失 → 重复 → 离群 → 评分"
 
+# 发布口径：基线（截止时样本）与补发（截止后迟到 / 撤回 / 更正）
+RELEASE_BASELINE = "baseline"
+RELEASE_RUN = "run"
+RELEASE_SUPPLEMENT = "supplement"
+RELEASE_LABELS = {
+    RELEASE_BASELINE: "截止基线",
+    RELEASE_RUN: "即时运行",
+    RELEASE_SUPPLEMENT: "补发增量",
+}
+SUPPLEMENT_OPS = ("late", "withdraw", "correct")
+SUPPLEMENT_LABELS = {
+    "late": "迟到记录",
+    "withdraw": "撤回工单",
+    "correct": "字段更正",
+}
+
 
 @dataclass(frozen=True)
 class Settings:

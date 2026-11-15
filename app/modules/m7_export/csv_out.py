@@ -20,13 +20,20 @@ def csv_text(header: list[str], rows: list[list]) -> str:
     return BOM + buffer.getvalue()
 
 
-def report_csv(result: dict) -> str:
+def report_csv(result: dict, *, release: dict | None = None) -> str:
     score = result["score"]
     counters = result["manifest"]["counters"]
+    scope = (release or {}).get("scope") or result["manifest"].get("scope") or {}
     rows = [
         ["总分", score["score"], "分", "刻度 0.01"],
         ["等级", score["grade"], "", score["grade_label"]],
         ["扣分合计", score["penalty_sum"], "分", "总分 + 扣分 = 100"],
+        ["样本口径", scope.get("label") or "即时运行", "",
+         _scope_note(scope)],
+        ["截止时间", scope.get("cutoff_at") or "", "",
+         "截止后到达的记录只进补发版本"],
+        ["补发批次", scope.get("supplement_total", 0), "个",
+         "、".join(scope.get("supplement_ids") or [])],
     ]
     for item in score["dims"]:
         rows.append([f"{item['label']}扣分", item["penalty"], "分",
@@ -45,7 +52,16 @@ def report_csv(result: dict) -> str:
     return csv_text(["项目", "数值", "单位", "备注"], rows)
 
 
-def profile_csv(result: dict) -> str:
+def _scope_note(scope: dict) -> str:
+    ops = scope.get("operations") or {}
+    if not scope.get("supplement_total"):
+        return "截止时冻结样本"
+    return (f"基线 + {scope.get('supplement_total')} 批补发："
+            f"迟到 {ops.get('late', 0)} / 撤回 {ops.get('withdraw', 0)} / "
+            f"更正 {ops.get('correct', 0)}")
+
+
+def profile_csv(result: dict, *, release: dict | None = None) -> str:
     rows = []
     for item in result["profile"]["profile"]:
         rows.append([
@@ -58,7 +74,7 @@ def profile_csv(result: dict) -> str:
                      "格式不合格", "格式率", "基数", "最小", "最大"], rows)
 
 
-def missing_csv(result: dict) -> str:
+def missing_csv(result: dict, *, release: dict | None = None) -> str:
     summary = {item["column"]: item for item in result["missing"]["run_summary"]}
     rows = []
     for item in result["missing"]["account"]["by_column"]:
@@ -70,7 +86,47 @@ def missing_csv(result: dict) -> str:
                      "最长段"], rows)
 
 
-def duplicates_csv(result: dict) -> str:
+def impact_csv(before: dict, after: dict, *, release: dict | None = None) -> str:
+    """补发影响明细：每一行都是 前值 / 后值 / 差，缺省为 0 不省略。"""
+    from ..m6_score import impact as impact_mod
+
+    payload = impact_mod.build(before, after)
+    score = payload["score"]
+    rows = [
+        ["总分", score["before"], score["after"], score["delta"], "分"],
+        ["扣分合计", score["penalty_before"], score["penalty_after"],
+         score["penalty_delta"], "分"],
+        ["等级", score["grade_before"], score["grade_after"],
+         "变化" if score["grade_before"] != score["grade_after"] else "不变", ""],
+    ]
+    for item in score["dims"]:
+        rows.append([f"{item['label']}扣分", item["before"], item["after"],
+                     item["delta"], f"比率 {item['rate_before']} → {item['rate_after']}"])
+    for key, item in payload["counts"].items():
+        rows.append([key, item["before"], item["after"], item["delta"], "计数"])
+    missing = payload["missing"]
+    rows.extend([
+        ["缺失格合计", missing["missing_before"], missing["missing_after"],
+         missing["missing_delta"], "格"],
+        ["缺失率", missing["rate_before"], missing["rate_after"],
+         missing["rate_delta"], "比率"],
+        ["连续缺失段数", missing["runs"]["before"], missing["runs"]["after"],
+         missing["runs"]["delta"], "段"],
+    ])
+    for item in missing["columns"]:
+        rows.append([f"缺失·{item['label']}", item["missing_before"],
+                     item["missing_after"], item["missing_delta"],
+                     f"率 {item['rate_before']} → {item['rate_after']}"])
+    for item in missing["patterns"]["changed"]:
+        rows.append(["缺失模式·" + "+".join(item["labels"]), item["before"],
+                     item["after"], item["delta"], "签名行数"])
+    for item in missing["co_missing"]["changed"]:
+        rows.append([f"共缺·{item['left']}+{item['right']}", item["before"],
+                     item["after"], item["delta"], "行数"])
+    return csv_text(["项目", "补发前", "补发后", "差值", "说明"], rows)
+
+
+def duplicates_csv(result: dict, *, release: dict | None = None) -> str:
     duplicates = result["duplicates"]
     rows = []
     for item in duplicates["hash_groups"]:
@@ -86,7 +142,7 @@ def duplicates_csv(result: dict) -> str:
     return csv_text(["账", "组或键", "行数", "行号", "冲突列"], rows)
 
 
-def outliers_csv(result: dict) -> str:
+def outliers_csv(result: dict, *, release: dict | None = None) -> str:
     stats = {item["name"]: item for item in result["outliers"]["columns"]}
     rows = []
     for item in result["outliers"]["cells"]:
@@ -98,7 +154,7 @@ def outliers_csv(result: dict) -> str:
                      "原因码"], rows)
 
 
-def quarantine_csv(result: dict) -> str:
+def quarantine_csv(result: dict, *, release: dict | None = None) -> str:
     rows = []
     for item in result["dataset"]["quarantine"]:
         rows.append([item["lineno"], item["segment"], item["code"],
@@ -106,7 +162,7 @@ def quarantine_csv(result: dict) -> str:
     return csv_text(["行号", "段", "原因码", "字段", "原值", "说明"], rows)
 
 
-def flags_csv(result: dict) -> str:
+def flags_csv(result: dict, *, release: dict | None = None) -> str:
     rows = []
     for item in result["dataset"]["flags"]:
         rows.append([item["code"], item["label"], item["level"], item["count"]])

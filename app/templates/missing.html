@@ -58,7 +58,7 @@
   <table class="ledger">
     <thead><tr><th>缺失列</th><th class="num">行数</th><th>行号</th></tr></thead>
     <tbody>
-      {% for pattern in missing.patterns %}
+      {% for pattern in summary.patterns %}
       <tr>
         <td>{{ pattern.labels|join(" / ") }}</td>
         <td class="num">{{ pattern.count }}</td>
@@ -71,11 +71,11 @@
 
 <section class="block">
   <h2 class="block__title">共缺对</h2>
-  {% if missing.co_missing %}
+  {% if summary.co_missing %}
   <table class="ledger">
     <thead><tr><th>列对</th><th class="num">同时缺失行数</th></tr></thead>
     <tbody>
-      {% for pair in missing.co_missing %}
+      {% for pair in summary.co_missing %}
       <tr><td>{{ pair.left_label }} / {{ pair.right_label }}</td><td class="num">{{ pair.count }}</td></tr>
       {% endfor %}
     </tbody>

@@ -32,14 +32,41 @@ curl -s -X POST http://127.0.0.1:18204/api/datasets/import \
 curl -s -X POST http://127.0.0.1:18204/api/score \
   -H 'Content-Type: application/json' -d '{"sample":"tickets_dirty.csv"}'
 
+# 登记截止基线（冻结当月样本）
+curl -s -X POST http://127.0.0.1:18204/api/score \
+  -H 'Content-Type: application/json' \
+  -d '{"sample":"tickets_dirty.csv","release":"baseline","cutoff_at":"2026-11-30T18:00:00+08:00"}'
+
+# 上线前预览补发影响（不写库）
+curl -s -X POST http://127.0.0.1:18204/api/supplements/preview \
+  -H 'Content-Type: application/json' \
+  -d '{"supplement_id":"SUP-1130-A","dataset":"tickets_dirty.csv","ops":[{"op":"late","row":{"ticket_id":"T-2026-900001","customer_id":"00901","channel":"电话","created_at":"2026-11-30T19:00:00+08:00","first_response_min":"20","handle_hours":"2.00","satisfaction":"4","agent":"陈允","region":"华东","priority":"P2"}}]}'
+
+# 正式应用补发（同批次重试幂等）
+curl -s -X POST http://127.0.0.1:18204/api/supplements \
+  -H 'Content-Type: application/json' \
+  -d '{"supplement_id":"SUP-1130-A","dataset":"tickets_dirty.csv","ops":[{"op":"withdraw","ticket_id":"T-2026-000102","lineno":35},{"op":"correct","ticket_id":"T-2026-000104","fields":{"agent":"李迟"}}]}'
+
 # 上传自己的文件
 curl -s -X POST http://127.0.0.1:18204/api/datasets/upload \
   -F 'file=@sample_data/tickets_dirty.csv' -F 'encoding=utf-8'
 
-# 导出
-curl -s -o /tmp/report.csv http://127.0.0.1:18204/api/export/report.csv
-curl -s http://127.0.0.1:18204/api/export/manifest.json
+# 导出（带 run_id 时三者同源）
+curl -s -o /tmp/report.csv "http://127.0.0.1:18204/api/export/report.csv?run_id=QS-..."
+curl -s -o /tmp/impact.csv "http://127.0.0.1:18204/api/export/impact.csv?run_id=QS-..."
+curl -s "http://127.0.0.1:18204/api/export/manifest.json?run_id=QS-..."
 ```
+
+## 3.1 月底例会口径建议
+
+1. 例会上发布的是**截止基线**版本：报告页「样本范围」写明截止时间、
+   补发批次 0，`manifest.json` 的 `scope.kind = baseline`。
+2. 截止后客服系统陆续补发时，按批次调用 `/api/supplements`（一批一个
+   `supplement_id`），不要重新上传整份文件——基线已冻结，会被 409 拦下。
+3. 每次补发后报告页出现「补发影响」区块，显示相对截止基线的总分与缺失模式变化；
+   例会前若仍有新补发，可直接看这版，并在报告里注明「含 N 批补发」。
+4. 若补发版本有问题，`/batches` 点「恢复此版」切回完整旧版，报告、缺失明细与
+   导出会一起回到旧版，不删除任何新数据。
 
 ## 4 样例
 
@@ -66,6 +93,12 @@ curl -s http://127.0.0.1:18204/api/export/manifest.json
 | 422 | `E_DECODE` | 编码不在 UTF-8 / GB18030 内，先转码再传 |
 | 404 | `E_SAMPLE_UNKNOWN` | 样例名不在白名单，用 `/api/datasets` 看可用项 |
 | 409 | `E_STALE_RUN` | 页面版本落后；刷新后重跑，别用旧页面覆盖 |
+| 409 | `E_BASELINE_FROZEN` | 该数据集已冻结截止基线；改内容请登记补发批次 |
+| 409 | `E_SUPPLEMENT_CONFLICT` | 同批次号已用不同内容登记过；换新批次号或核对操作 |
+| 409 | `E_RELEASE_INCOMPLETE` | 目标旧版缺运行 / 快照 / 原文 / 对账，不能恢复 |
+| 422 | `E_SUPPLEMENT_NOT_FOUND` | 撤回 / 更正定位不到记录；核对工单号或行号 |
+| 400 | `E_SUPPLEMENT_AMBIGUOUS` | 同号多行，补发需带 `lineno` |
+| 400 | `E_SUPPLEMENT_INVALID` | 操作类型或列名未知、迟到行缺必填字段 |
 | 404 | `E_RUN_NOT_FOUND` | 还没有运行记录，先跑一次评分 |
 
 ## 6 测试

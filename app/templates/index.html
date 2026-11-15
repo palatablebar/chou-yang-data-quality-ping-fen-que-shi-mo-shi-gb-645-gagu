@@ -14,6 +14,60 @@
   </div>
 </section>
 
+<section class="block block--scope" data-scope>
+  <h2 class="block__title">样本范围<span class="block__hint">{{ report.scope.label or "即时运行" }}</span></h2>
+  <ul class="pairs pairs--two">
+    <li class="pair"><span class="pair__key">截止时间</span><span class="pair__value num">{{ report.scope.cutoff_at|localdt if report.scope.cutoff_at else "未设截止" }}</span></li>
+    <li class="pair"><span class="pair__key">补发批次</span><span class="pair__value num">{{ report.scope.supplement_total or 0 }}</span></li>
+    <li class="pair"><span class="pair__key">迟到追加</span><span class="pair__value num">{{ (report.scope.operations or {}).get("late", 0) }}</span></li>
+    <li class="pair"><span class="pair__key">撤回工单</span><span class="pair__value num">{{ (report.scope.operations or {}).get("withdraw", 0) }}</span></li>
+    <li class="pair"><span class="pair__key">字段更正</span><span class="pair__value num">{{ (report.scope.operations or {}).get("correct", 0) }}</span></li>
+    <li class="pair"><span class="pair__key">基线版本</span><span class="pair__value mono">{{ report.scope.baseline_run_id or report.run.run_id }}</span></li>
+  </ul>
+  <p class="aside">本次报告、缺失明细与导出都来自同一运行 <code>{{ report.run.run_id }}</code>（v{{ report.run.version }}）。截止基线冻结后，迟到 / 撤回 / 更正只通过补发版本推进。</p>
+</section>
+
+{% if report.impact %}
+<section class="block block--impact" data-impact>
+  <h2 class="block__title">补发影响<span class="block__hint">相对截止基线 {{ report.scope.baseline_run_id }}</span></h2>
+  <ul class="pairs pairs--two">
+    <li class="pair"><span class="pair__key">总分</span><span class="pair__value num">{{ report.impact.score.before }} → {{ report.impact.score.after }}<span class="tag">{{ report.impact.score.delta }}</span></span></li>
+    <li class="pair"><span class="pair__key">等级</span><span class="pair__value num">{{ report.impact.score.grade_before }} → {{ report.impact.score.grade_after }}</span></li>
+    <li class="pair"><span class="pair__key">缺失格</span><span class="pair__value num">{{ report.impact.missing.missing_before }} → {{ report.impact.missing.missing_after }}<span class="tag">{{ report.impact.missing.missing_delta }}</span></span></li>
+    <li class="pair"><span class="pair__key">缺失率</span><span class="pair__value num">{{ report.impact.missing.rate_before|pct }} → {{ report.impact.missing.rate_after|pct }}</span></li>
+    <li class="pair"><span class="pair__key">连续缺失段</span><span class="pair__value num">{{ report.impact.missing.runs.before }} → {{ report.impact.missing.runs.after }}<span class="tag">{{ report.impact.missing.runs.delta }}</span></span></li>
+    <li class="pair"><span class="pair__key">采纳行</span><span class="pair__value num">{{ report.impact.counts.accepted.before }} → {{ report.impact.counts.accepted.after }}<span class="tag">{{ report.impact.counts.accepted.delta }}</span></span></li>
+  </ul>
+  {% if report.impact.score.dims %}
+  <table class="ledger ledger--tight">
+    <thead><tr><th>维度</th><th class="num">补发前</th><th class="num">补发后</th><th class="num">差值</th><th class="num">比率变化</th></tr></thead>
+    <tbody>
+      {% for dim in report.impact.score.dims %}
+      <tr>
+        <td>{{ dim.label }}</td>
+        <td class="num">{{ dim.before }}</td>
+        <td class="num">{{ dim.after }}</td>
+        <td class="num">{{ dim.delta }}</td>
+        <td class="num">{{ dim.rate_before|pct }} → {{ dim.rate_after|pct }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if report.impact.missing.patterns.changed %}
+  <table class="ledger ledger--tight">
+    <thead><tr><th>缺失模式</th><th class="num">补发前</th><th class="num">补发后</th><th class="num">差值</th></tr></thead>
+    <tbody>
+      {% for item in report.impact.missing.patterns.changed %}
+      <tr><td>{{ item.labels|join(" + ") }}</td><td class="num">{{ item.before }}</td><td class="num">{{ item.after }}</td><td class="num">{{ item.delta }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <p class="links"><a class="link" href="/api/export/impact.csv?run_id={{ report.run.run_id }}">导出补发影响 CSV</a></p>
+</section>
+{% endif %}
+
 <section class="block">
   <h2 class="block__title">扣分<span class="block__hint num">{{ report.penalty_sum }} / 100</span></h2>
   <div class="bars" data-bars>
@@ -142,6 +196,18 @@
       <span class="field__label">编码</span>
       <input class="field__input" type="text" name="encoding" id="encoding-input" placeholder="utf-8" autocomplete="off">
     </label>
+    <label class="field field--narrow">
+      <span class="field__label">口径</span>
+      <select class="field__input" name="release" id="release-select">
+        <option value="run">即时运行</option>
+        <option value="baseline">截止基线（冻结）</option>
+      </select>
+    </label>
+    <label class="field field--narrow">
+      <span class="field__label">截止时间</span>
+      <input class="field__input" type="text" name="cutoff_at" id="cutoff-input"
+             placeholder="2026-11-30T18:00:00+08:00" autocomplete="off">
+    </label>
     <div class="actions">
       <button class="btn btn--primary" type="submit" id="run-btn">采信并评分</button>
       {% if run %}<button class="btn" type="button" id="replay-btn">重跑</button>{% endif %}
@@ -150,13 +216,65 @@
   <p class="status" id="form-status" role="status" aria-live="polite"></p>
 </section>
 
+{% if report and report.scope.kind == "baseline" %}
+<section class="block block--form block--supplement">
+  <h2 class="block__title">登记补发</h2>
+  <p class="aside">在截止基线上应用迟到记录 / 撤回 / 更正，生成一版新的补发发布。同一批次号重试不会新增版本。</p>
+  <form id="supplement-form" class="form"
+        data-dataset="{{ report.dataset.name }}"
+        data-baseline="{{ report.scope.baseline_run_id or run.run_id }}">
+    <label class="field field--narrow">
+      <span class="field__label">批次号</span>
+      <input class="field__input" type="text" name="supplement_id" id="supplement-id-input" placeholder="SUP-2026-11-01" autocomplete="off">
+    </label>
+    <label class="field">
+      <span class="field__label">操作（JSON 数组）</span>
+      <textarea class="field__input field__input--area" name="ops" id="supplement-ops-input" rows="6"
+        placeholder='[{"op":"late","row":{"ticket_id":"T-2026-900001","customer_id":"00901","channel":"电话","created_at":"2026-11-01T09:00:00+08:00","first_response_min":"20","handle_hours":"2.0","satisfaction":"4","agent":"陈允","region":"华东","priority":"P2"}},{"op":"withdraw","ticket_id":"T-2026-000102","lineno":35},{"op":"correct","ticket_id":"T-2026-000104","fields":{"agent":"李迟"}}]'></textarea>
+    </label>
+    <div class="actions">
+      <button class="btn" type="button" id="preview-btn">预览影响</button>
+      <button class="btn btn--primary" type="submit" id="supplement-btn">应用补发</button>
+    </div>
+  </form>
+  <div id="preview-result" class="preview" hidden></div>
+  <p class="status" id="supplement-status" role="status" aria-live="polite"></p>
+</section>
+{% endif %}
+
+{% if releases %}
+<section class="block">
+  <h2 class="block__title">发布版本<span class="block__hint">当前 {{ release.release_id if release else "—" }}</span></h2>
+  <table class="ledger ledger--wide">
+    <thead><tr><th>发布</th><th>口径</th><th class="num">版本</th><th>运行</th>
+               <th class="num">批次</th><th>时间</th><th></th></tr></thead>
+    <tbody>
+      {% for item in releases %}
+      <tr{% if release and item.release_id == release.release_id %} class="is-active"{% endif %}>
+        <td class="mono">{{ item.release_id }}</td>
+        <td>{{ item.scope.label or item.kind }}{% if item.scope.cutoff_at %}<span class="sub">截止 {{ item.scope.cutoff_at|localdt }}</span>{% endif %}</td>
+        <td class="num">v{{ item.version }}</td>
+        <td class="mono"><a class="link" href="/?run_id={{ item.run_id }}">{{ item.run_id }}</a></td>
+        <td class="num">{{ item.scope.supplement_total or 0 }}</td>
+        <td class="mono">{{ item.published_at|localdt }}</td>
+        <td>{% if not (release and item.release_id == release.release_id) %}<a class="link" href="/?run_id={{ item.run_id }}">查看</a>{% else %}<span class="tag">当前</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
 <section class="block">
   <h2 class="block__title">导出</h2>
   <p class="links">
-    <a class="link" href="/api/export/report.csv">报告 CSV</a>
-    <a class="link" href="/api/export/profile.csv">画像 CSV</a>
-    <a class="link" href="/api/export/quarantine.csv">隔离区 CSV</a>
-    <a class="link" href="/api/export/manifest.json">运行清单 JSON</a>
+    <a class="link" href="/api/export/report.csv?run_id={{ run.run_id if run else "" }}">报告 CSV</a>
+    <a class="link" href="/api/export/profile.csv?run_id={{ run.run_id if run else "" }}">画像 CSV</a>
+    <a class="link" href="/api/export/missing.csv?run_id={{ run.run_id if run else "" }}">缺失 CSV</a>
+    <a class="link" href="/api/export/quarantine.csv?run_id={{ run.run_id if run else "" }}">隔离区 CSV</a>
+    {% if report and report.impact %}<a class="link" href="/api/export/impact.csv?run_id={{ run.run_id }}">补发影响 CSV</a>{% endif %}
+    <a class="link" href="/api/export/manifest.json?run_id={{ run.run_id if run else "" }}">运行清单 JSON</a>
   </p>
+  <p class="aside">所有导出都带同一个 <code>run_id</code>，与报告页和缺失明细逐位一致。</p>
 </section>
 {% endblock %}

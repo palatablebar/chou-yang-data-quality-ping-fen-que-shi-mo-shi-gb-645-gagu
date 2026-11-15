@@ -1,4 +1,4 @@
-"""运行清单导出：输入摘要、阈值、计数、对账，可离线复算。"""
+"""运行清单导出：输入摘要、阈值、计数、对账与样本口径，可离线复算。"""
 from __future__ import annotations
 
 import json
@@ -6,9 +6,11 @@ import json
 from ... import config
 
 
-def build(result: dict) -> dict:
+def build(result: dict, *, release: dict | None = None,
+          impact: dict | None = None) -> dict:
     manifest = result["manifest"]
-    return {
+    scope = (release or {}).get("scope") or manifest.get("scope") or {}
+    payload = {
         "run_id": manifest["run_id"],
         "version": manifest["version"],
         "dataset": manifest["dataset"],
@@ -34,6 +36,26 @@ def build(result: dict) -> dict:
         "weights": [{"key": item["key"], "cap": item["cap"],
                      "tolerance": item["tolerance"]} for item in config.WEIGHTS],
         "grades": [dict(item) for item in config.GRADES],
+        "scope": scope,
+        "release": _release_view(release),
+    }
+    if impact is not None:
+        payload["impact"] = impact
+    return payload
+
+
+def _release_view(release: dict | None) -> dict | None:
+    if not release:
+        return None
+    return {
+        "release_id": release.get("release_id"),
+        "kind": release.get("kind"),
+        "label": release.get("label") or (release.get("scope") or {}).get("label"),
+        "cutoff_at": release.get("cutoff_at"),
+        "baseline_run_id": release.get("baseline_run_id"),
+        "parent_run_id": release.get("parent_run_id"),
+        "supplement_ids": release.get("supplement_ids") or [],
+        "published_at": release.get("published_at"),
     }
 
 

@@ -18,14 +18,23 @@ def page_report(request: Request, run_id: str | None = None,
     if result is not None:
         payload = service.report_payload(ctx.store, run["run_id"])
         payload["run"] = {**payload["run"]}
+    release = ctx.current_release(run_id) if run else None
+    dataset_name = payload["dataset"]["name"] if payload else None
     return render(request, "index.html", page="index", page_title="质量报告",
-                  run=run, result=result, report=payload,
+                  run=run, result=result, report=payload, release=release,
+                  releases=(ctx.store.list_releases(name=dataset_name, limit=12)
+                            if dataset_name else []),
                   samples=ingest_service.available_samples(ctx.settings))
 
 
 @router.get("/api/export/report.csv")
 def export_report(run_id: str | None = None, ctx: Ctx = Depends(get_ctx)):
     return service.export(ctx.store, "report.csv", run_id)
+
+
+@router.get("/api/export/impact.csv")
+def export_impact(run_id: str | None = None, ctx: Ctx = Depends(get_ctx)):
+    return service.export(ctx.store, "impact.csv", run_id)
 
 
 @router.get("/api/export/profile.csv")
